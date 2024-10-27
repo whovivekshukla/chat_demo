@@ -45,7 +45,7 @@ def send_appointment_email(patient_name, doctor_name, appointment_date, appointm
         },
         "emailData": {
             "purpose": "EMAIL_APPOINTMENT_BOOKED_TEMPLATE",
-            "to": "vivek@azodha.com",
+            "to": "arnav@azodha.com",
             "subject": "Appointment Booked"
         }
     }
