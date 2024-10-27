@@ -1,4 +1,3 @@
-
 import streamlit as st
 from openai import OpenAI
 import json
@@ -21,6 +20,19 @@ PROVIDERS = [
     {"name": "Dr. James Rodriguez", "specialty": "General Practice"},
     {"name": "Dr. Lisa Anderson", "specialty": "Internal Medicine"}
 ]
+
+# Supported languages
+SUPPORTED_LANGUAGES = {
+    "english": {"code": "en", "name": "English"},
+    "spanish": {"code": "es", "name": "Spanish"},
+    "español": {"code": "es", "name": "Spanish"},
+    "hindi": {"code": "hi", "name": "Hindi"},
+    "हिंदी": {"code": "hi", "name": "Hindi"},
+    "chinese": {"code": "zh", "name": "Chinese"},
+    "中文": {"code": "zh", "name": "Chinese"},
+    "french": {"code": "fr", "name": "French"},
+    "français": {"code": "fr", "name": "French"}
+}
 
 
 def send_appointment_email(patient_name, doctor_name, appointment_date, appointment_time):
@@ -45,7 +57,7 @@ def send_appointment_email(patient_name, doctor_name, appointment_date, appointm
         },
         "emailData": {
             "purpose": "EMAIL_APPOINTMENT_BOOKED_TEMPLATE",
-            "to": "arnav@azodha.com",
+            "to": "vivek@azodha.com",
             "subject": "Appointment Booked"
         }
     }
@@ -73,6 +85,10 @@ def initialize_session_state():
         st.session_state.booking_stage = "not_started"
     if 'selected_provider' not in st.session_state:
         st.session_state.selected_provider = None
+    if 'language' not in st.session_state:
+        st.session_state.language = None
+    if 'language_selected' not in st.session_state:
+        st.session_state.language_selected = False
 
 def get_question_by_id(question_id):
     for question in SURVEY_JSON["Survey"]["Questions"]:
@@ -81,13 +97,15 @@ def get_question_by_id(question_id):
     return None
 
 def validate_response(question, response):
-    system_prompt = """
+    system_prompt = f"""
     You are an AI assistant helping to validate survey responses. 
     Your task is to determine if a given response is valid for the question asked.
     Consider ranges in options, such as "5 to 9", and validate if the response falls within any specified range.
     When matching names, if only the first name is provided and it matches a single doctor, consider it valid. 
     However, if multiple doctors share the same first name, ensure the surname is also matched.
     Respond with only 'true' if the response is valid, or 'false' if it's invalid.
+    
+    IMPORTANT: The user is responding in {st.session_state.language['name']}. Consider responses valid if they match the meaning in any language.
     """
 
     valid_options = question.get('Options', question.get('Scale', 'Any response'))
@@ -115,12 +133,14 @@ def validate_response(question, response):
     except Exception as e:
         st.error(f"Error validating response: {e}")
         return False
-
+    
 def interpret_response(question, response):
-    system_prompt = """
+    system_prompt = f"""
     You are an AI assistant helping to interpret survey responses. 
     Your task is to map the given response to the closest valid option for the question.
     Respond with only the mapped option, or 'INVALID' if no mapping is possible.
+    
+    IMPORTANT: The user is responding in {st.session_state.language['name']}. Map their response to the English option that matches the meaning.
     """
 
     user_prompt = f"""
@@ -147,16 +167,26 @@ def interpret_response(question, response):
         st.error(f"Error interpreting response: {e}")
         return "INVALID"
 
+
+
 def generate_ai_message(question, is_invalid=False, off_topic=False):
-    system_prompt = """
-    You are a friendly and professional healthcare survey assistant. Your goal is to:
-    1. Ask survey questions in a conversational way
+    system_prompt = f"""
+    You are a healthcare survey assistant. Your goal is to:
+    1. Ask survey questions directly and clearly
     2. Keep users focused on the survey
     3. Validate their responses
-    4. Acknowledge their answers warmly
-    5. If they go off-topic, politely redirect them to the survey
+    4. Give brief acknowledgments
+    5. If they go off-topic, redirect them to the survey
     
-    Keep responses concise but friendly. Use natural language and maintain a consistent tone.
+    Important guidelines:
+    - Don't start with phrases like "I hope you're keeping well" or "I'd be happy to help"
+    - Don't add unnecessary pleasantries
+    - Go straight to the question
+    - Keep responses concise
+    - Maintain a professional tone
+    - Don't add "I'm just curious" or similar phrases
+    
+    IMPORTANT: Respond ONLY in {st.session_state.language['name']} language.
     """
 
     if off_topic:
@@ -229,8 +259,12 @@ def get_next_question_id(current_question_id, user_response):
     return None
 
 def present_provider_options():
-    provider_message = "Thank you for completing the survey! First, could you please tell me your name?"
-    return provider_message
+    thank_you_question = {
+        "QuestionID": "name_request",
+        "QuestionText": "Thank you for completing the survey! First, could you please tell me your name?",
+        "Options": []  # No options for name input
+    }
+    return generate_ai_message(thank_you_question)
 
 def validate_time_format(time_str):
     try:
@@ -270,18 +304,28 @@ def book_provider_appointment(provider_name, patient_name, appointment_time):
     except Exception as e:
         return f"Error booking appointment: {str(e)}"
 
+
 def main():
     st.title("Healthcare Survey Assistant")
-    
     initialize_session_state()
 
-    # Initialize the survey if not started
-    if not st.session_state.survey_started:
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": "Hello! I'm here to help you complete a healthcare survey. Would you like to start? (Please respond with 'Yes' to begin)"
-        })
-        st.session_state.survey_started = True
+    # Handle language selection first
+    if not st.session_state.language_selected:
+        if len(st.session_state.messages) == 0:
+            language_prompt = """Please select your preferred language / Por favor, seleccione su idioma preferido / कृपया अपनी पसंदीदा भाषा चुनें / 请选择您的首选语言 / Veuillez sélectionner votre langue préférée:
+
+Available languages:
+- English
+- Spanish (Español)
+- Hindi (हिंदी)
+- Chinese (中文)
+- French (Français)
+
+Type your preferred language:"""
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": language_prompt
+            })
 
     # Display chat history
     for message in st.session_state.messages:
@@ -293,97 +337,153 @@ def main():
         # Add user message to chat history
         st.session_state.messages.append({"role": "user", "content": user_input})
 
-        # Handle initial survey start
-        if len(st.session_state.messages) <= 3 and user_input.lower() == "yes":
-            initial_question = generate_ai_message(get_question_by_id(1))
-            st.session_state.messages.append({"role": "assistant", "content": initial_question})
-            st.session_state.current_question = 1
-        
-        # Handle provider selection and booking
-        elif st.session_state.survey_completed:
-            if st.session_state.booking_stage == "not_started":
-                # Collect patient name
-                st.session_state.patient_name = user_input
-                provider_list = "Here are our available providers:\n\n"
-                for i, provider in enumerate(PROVIDERS, 1):
-                    provider_list += f"{i}. {provider['name']} - {provider['specialty']}\n"
-                provider_list += "\nPlease enter the number of the provider you'd like to schedule with (1-5):"
-                st.session_state.messages.append({"role": "assistant", "content": provider_list})
-                st.session_state.booking_stage = "selecting_provider"
-
-            # Replace the provider selection section in the main() function with this:
-            elif st.session_state.booking_stage == "selecting_provider":
-                provider_question = {
-                    "QuestionID": "provider_selection",
-                    "QuestionText": "Please select your preferred healthcare provider",
-                    "Options": [provider['name'] for provider in PROVIDERS]  # Just array of names: ["Dr. Sarah Johnson", "Dr. Michael Chen", etc.]
+        # Handle language selection
+        if not st.session_state.language_selected:
+            user_language = user_input.lower().strip()
+            if user_language in SUPPORTED_LANGUAGES:
+                st.session_state.language = SUPPORTED_LANGUAGES[user_language]
+                st.session_state.language_selected = True
+                welcome_question = {
+                    "QuestionText": "Would you like to start the healthcare survey?",
+                    "Options": ["Yes", "No"]
                 }
-                
-                is_valid = validate_response(provider_question, user_input)
-                if is_valid:
-                    interpreted_response = interpret_response(provider_question, user_input)
-                    for i, provider in enumerate(PROVIDERS):
-                        if provider["name"] in interpreted_response or str(i + 1) in interpreted_response:
-                            st.session_state.selected_provider = provider["name"]
-                            time_request = "What time would you like to schedule your appointment for tomorrow? Please use 24-hour format (HH:MM), e.g., 14:30 for 2:30 PM:"
-                            st.session_state.messages.append({"role": "assistant", "content": time_request})
-                            st.session_state.booking_stage = "selecting_time"
-                            break
-                    else:  # This runs if no break occurred in the for loop
+                welcome_message = generate_ai_message(welcome_question)
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": welcome_message
+                })
+            else:
+                error_message = """Invalid language selection. Please type one of the following:
+- English
+- Spanish/Español
+- Hindi/हिंदी
+- Chinese/中文
+- French/Français"""
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": error_message
+                })
+        
+        # Handle survey and booking after language is selected
+        else:
+            # Handle initial survey start
+            if len(st.session_state.messages) <= 3 and user_input.lower() in ['yes', 'sí', 'हाँ', '是', 'oui']:
+                initial_question = generate_ai_message(get_question_by_id(1))
+                st.session_state.messages.append({"role": "assistant", "content": initial_question})
+                st.session_state.current_question = 1
+                st.session_state.survey_started = True
+            
+            # Handle provider selection and booking
+            elif st.session_state.survey_completed:
+                if st.session_state.booking_stage == "not_started":
+                    # Collect patient name
+                    st.session_state.patient_name = user_input
+                    provider_list = "Here are our available providers:\n\n"
+                    for i, provider in enumerate(PROVIDERS, 1):
+                        provider_list += f"{i}. {provider['name']} - {provider['specialty']}\n"
+                    provider_list += "\nPlease enter the number of the provider you'd like to schedule with (1-5):"
+                    provider_question = {
+                        "QuestionText": provider_list,
+                        "Options": []
+                    }
+                    translated_provider_list = generate_ai_message(provider_question)
+                    st.session_state.messages.append({"role": "assistant", "content": translated_provider_list})
+                    st.session_state.booking_stage = "selecting_provider"
+
+                elif st.session_state.booking_stage == "selecting_provider":
+                    provider_question = {
+                        "QuestionID": "provider_selection",
+                        "QuestionText": "Please select your preferred healthcare provider",
+                        "Options": [provider['name'] for provider in PROVIDERS]
+                    }
+                    
+                    is_valid = validate_response(provider_question, user_input)
+                    if is_valid:
+                        interpreted_response = interpret_response(provider_question, user_input)
+                        for i, provider in enumerate(PROVIDERS):
+                            if provider["name"] in interpreted_response or str(i + 1) in interpreted_response:
+                                st.session_state.selected_provider = provider["name"]
+                                time_question = {
+                                    "QuestionText": "What time would you like to schedule your appointment for tomorrow? Please use 24-hour format (HH:MM), e.g., 14:30 for 2:30 PM:",
+                                    "Options": []
+                                }
+                                time_request = generate_ai_message(time_question)
+                                st.session_state.messages.append({"role": "assistant", "content": time_request})
+                                st.session_state.booking_stage = "selecting_time"
+                                break
+                        else:  # This runs if no break occurred in the for loop
+                            provider_list = "I couldn't understand your selection. Here are our available providers:\n\n"
+                            for i, provider in enumerate(PROVIDERS, 1):
+                                provider_list += f"{i}. {provider['name']} - {provider['specialty']}\n"
+                            provider_list += "\nPlease enter the number of the provider you'd like to schedule with (1-5):"
+                            error_question = {
+                                "QuestionText": provider_list,
+                                "Options": []
+                            }
+                            error_message = generate_ai_message(error_question)
+                            st.session_state.messages.append({"role": "assistant", "content": error_message})
+                    else:
                         provider_list = "I couldn't understand your selection. Here are our available providers:\n\n"
                         for i, provider in enumerate(PROVIDERS, 1):
                             provider_list += f"{i}. {provider['name']} - {provider['specialty']}\n"
                         provider_list += "\nPlease enter the number of the provider you'd like to schedule with (1-5):"
-                        st.session_state.messages.append({"role": "assistant", "content": provider_list})
-                else:
-                    provider_list = "I couldn't understand your selection. Here are our available providers:\n\n"
-                    for i, provider in enumerate(PROVIDERS, 1):
-                        provider_list += f"{i}. {provider['name']} - {provider['specialty']}\n"
-                    provider_list += "\nPlease enter the number of the provider you'd like to schedule with (1-5):"
-                    st.session_state.messages.append({"role": "assistant", "content": provider_list})
+                        error_question = {
+                            "QuestionText": provider_list,
+                            "Options": []
+                        }
+                        error_message = generate_ai_message(error_question)
+                        st.session_state.messages.append({"role": "assistant", "content": error_message})
 
-            elif st.session_state.booking_stage == "selecting_time":
-                if validate_time_format(user_input):
-                    booking_result = book_provider_appointment(
-                        st.session_state.selected_provider,
-                        st.session_state.patient_name,
-                        user_input
-                    )
-                    st.session_state.messages.append({"role": "assistant", "content": booking_result})
-                    st.session_state.booking_stage = "completed"
-                else:
-                    st.session_state.messages.append({
-                        "role": "assistant",
-                        "content": "Please enter a valid time in 24-hour format (HH:MM), e.g., 14:30 for 2:30 PM:"
-                    })
-        
-        # Handle ongoing survey
-        else:
-            current_question = get_question_by_id(st.session_state.current_question)
-            is_valid = validate_response(current_question, user_input)
+                elif st.session_state.booking_stage == "selecting_time":
+                    if validate_time_format(user_input):
+                        booking_result = book_provider_appointment(
+                            st.session_state.selected_provider,
+                            st.session_state.patient_name,
+                            user_input
+                        )
+                        result_question = {
+                            "QuestionText": booking_result,
+                            "Options": []
+                        }
+                        translated_result = generate_ai_message(result_question)
+                        st.session_state.messages.append({"role": "assistant", "content": translated_result})
+                        st.session_state.booking_stage = "completed"
+                    else:
+                        error_question = {
+                            "QuestionText": "Please enter a valid time in 24-hour format (HH:MM), e.g., 14:30 for 2:30 PM:",
+                            "Options": []
+                        }
+                        error_message = generate_ai_message(error_question)
+                        st.session_state.messages.append({"role": "assistant", "content": error_message})
             
-            if is_valid:
-                interpreted_response = interpret_response(current_question, user_input)
-                st.session_state.responses[current_question["QuestionID"]] = interpreted_response
-                
-                next_question_id = get_next_question_id(st.session_state.current_question, user_input)
-                next_question = get_question_by_id(next_question_id)
-                
-                if next_question:
-                    st.session_state.current_question = next_question_id
-                    response = generate_ai_message(next_question)
-                    st.session_state.messages.append({"role": "assistant", "content": response})
-                else:
-                    # Survey complete, begin booking process
-                    st.session_state.survey_completed = True
-                    provider_options = present_provider_options()
-                    st.session_state.messages.append({"role": "assistant", "content": provider_options})
-                    st.session_state.booking_stage = "not_started"
+            # Handle ongoing survey
             else:
-                response = generate_ai_message(current_question, is_invalid=True)
-                st.session_state.messages.append({"role": "assistant", "content": response})
+                current_question = get_question_by_id(st.session_state.current_question)
+                is_valid = validate_response(current_question, user_input)
+                
+                if is_valid:
+                    interpreted_response = interpret_response(current_question, user_input)
+                    st.session_state.responses[current_question["QuestionID"]] = interpreted_response
+                    
+                    next_question_id = get_next_question_id(st.session_state.current_question, user_input)
+                    next_question = get_question_by_id(next_question_id)
+                    
+                    if next_question:
+                        st.session_state.current_question = next_question_id
+                        response = generate_ai_message(next_question)
+                        st.session_state.messages.append({"role": "assistant", "content": response})
+                    else:
+                        # Survey complete, begin booking process
+                        st.session_state.survey_completed = True
+                        provider_options = present_provider_options()
+                        st.session_state.messages.append({"role": "assistant", "content": provider_options})
+                        st.session_state.booking_stage = "not_started"
+                else:
+                    response = generate_ai_message(current_question, is_invalid=True)
+                    st.session_state.messages.append({"role": "assistant", "content": response})
 
         st.rerun()
+
 
 if __name__ == "__main__":
     main()

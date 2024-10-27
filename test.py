@@ -1,3 +1,4 @@
+
 import streamlit as st
 from openai import OpenAI
 import json
@@ -7,6 +8,7 @@ from survey_data import SURVEY_JSON
 from tools import available_tools, execute_tool
 from datetime import timedelta
 from datetime import datetime as dt
+import requests
 
 # Initialize OpenAI client
 client = OpenAI()
@@ -20,6 +22,40 @@ PROVIDERS = [
     {"name": "Dr. Lisa Anderson", "specialty": "Internal Medicine"}
 ]
 
+
+def send_appointment_email(patient_name, doctor_name, appointment_date, appointment_time):
+    """
+    Send appointment confirmation email using the notification API
+    """
+    url = "https://notification-api-development.azo.dev/api/notifications/email"
+    
+    headers = {
+        "api_key": "3e9583ee-5ecb-40bc-be50-2d01ef30faed",
+        "organization_code": "dev-care2u",
+        "Content-Type": "application/json"
+    }
+    
+    
+    payload = {
+        "data": {
+            "first_name": patient_name,
+            "doctor_name": doctor_name,
+            "appointment_date": appointment_date,
+            "appointment_time": appointment_time
+        },
+        "emailData": {
+            "purpose": "EMAIL_APPOINTMENT_BOOKED_TEMPLATE",
+            "to": "vivek@azodha.com",
+            "subject": "Appointment Booked"
+        }
+    }
+    
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        response.raise_for_status()  # Raises an HTTPError if the status is 4xx, 5xx
+        return "Email notification sent successfully!"
+    except requests.exceptions.RequestException as e:
+        return f"Failed to send email notification: {str(e)}"
 
 
 def initialize_session_state():
@@ -49,6 +85,8 @@ def validate_response(question, response):
     You are an AI assistant helping to validate survey responses. 
     Your task is to determine if a given response is valid for the question asked.
     Consider ranges in options, such as "5 to 9", and validate if the response falls within any specified range.
+    When matching names, if only the first name is provided and it matches a single doctor, consider it valid. 
+    However, if multiple doctors share the same first name, ensure the surname is also matched.
     Respond with only 'true' if the response is valid, or 'false' if it's invalid.
     """
 
@@ -111,14 +149,20 @@ def interpret_response(question, response):
 
 def generate_ai_message(question, is_invalid=False, off_topic=False):
     system_prompt = """
-    You are a friendly and professional healthcare survey assistant. Your goal is to:
-    1. Ask survey questions in a conversational way
+    You are a healthcare survey assistant. Your goal is to:
+    1. Ask survey questions directly and clearly
     2. Keep users focused on the survey
     3. Validate their responses
-    4. Acknowledge their answers warmly
-    5. If they go off-topic, politely redirect them to the survey
+    4. Give brief acknowledgments
+    5. If they go off-topic, redirect them to the survey
     
-    Keep responses concise but friendly. Use natural language and maintain a consistent tone.
+    Important guidelines:
+    - Don't start with phrases like "I hope you're keeping well" or "I'd be happy to help"
+    - Don't add unnecessary pleasantries
+    - Go straight to the question
+    - Keep responses concise
+    - Maintain a professional tone
+    - Don't add "I'm just curious" or similar phrases
     """
 
     if off_topic:
@@ -222,12 +266,19 @@ def book_provider_appointment(provider_name, patient_name, appointment_time):
             note="Regular checkup",
             event_title=f"Check-up Appointment for {patient_name}"
         )
+        
+         # If booking successful, send email notification
+        if "error" not in result.lower():
+            email_result = send_appointment_email(patient_name, provider_name, appointment_date, appointment_time)
+            return f"{result}\n\n{email_result}"
+        
         return result
     except Exception as e:
         return f"Error booking appointment: {str(e)}"
 
 def main():
     st.title("Healthcare Survey Assistant")
+    
     initialize_session_state()
 
     # Initialize the survey if not started
@@ -266,19 +317,36 @@ def main():
                 st.session_state.messages.append({"role": "assistant", "content": provider_list})
                 st.session_state.booking_stage = "selecting_provider"
 
+            # Replace the provider selection section in the main() function with this:
             elif st.session_state.booking_stage == "selecting_provider":
-                if user_input.isdigit() and 1 <= int(user_input) <= 5:
-                    provider_index = int(user_input) - 1
-                    st.session_state.selected_provider = PROVIDERS[provider_index]["name"]
-                    time_request = "What time would you like to schedule your appointment for tomorrow? Please use 24-hour format (HH:MM), e.g., 14:30 for 2:30 PM:"
-                    st.session_state.messages.append({"role": "assistant", "content": time_request})
-                    st.session_state.booking_stage = "selecting_time"
-                    
+                provider_question = {
+                    "QuestionID": "provider_selection",
+                    "QuestionText": "Please select your preferred healthcare provider",
+                    "Options": [provider['name'] for provider in PROVIDERS]  # Just array of names: ["Dr. Sarah Johnson", "Dr. Michael Chen", etc.]
+                }
+                
+                is_valid = validate_response(provider_question, user_input)
+                if is_valid:
+                    interpreted_response = interpret_response(provider_question, user_input)
+                    for i, provider in enumerate(PROVIDERS):
+                        if provider["name"] in interpreted_response or str(i + 1) in interpreted_response:
+                            st.session_state.selected_provider = provider["name"]
+                            time_request = "What time would you like to schedule your appointment for tomorrow? Please use 24-hour format (HH:MM), e.g., 14:30 for 2:30 PM:"
+                            st.session_state.messages.append({"role": "assistant", "content": time_request})
+                            st.session_state.booking_stage = "selecting_time"
+                            break
+                    else:  # This runs if no break occurred in the for loop
+                        provider_list = "I couldn't understand your selection. Here are our available providers:\n\n"
+                        for i, provider in enumerate(PROVIDERS, 1):
+                            provider_list += f"{i}. {provider['name']} - {provider['specialty']}\n"
+                        provider_list += "\nPlease enter the number of the provider you'd like to schedule with (1-5):"
+                        st.session_state.messages.append({"role": "assistant", "content": provider_list})
                 else:
-                    st.session_state.messages.append({
-                        "role": "assistant",
-                        "content": "Please enter a valid provider name!."
-                    })
+                    provider_list = "I couldn't understand your selection. Here are our available providers:\n\n"
+                    for i, provider in enumerate(PROVIDERS, 1):
+                        provider_list += f"{i}. {provider['name']} - {provider['specialty']}\n"
+                    provider_list += "\nPlease enter the number of the provider you'd like to schedule with (1-5):"
+                    st.session_state.messages.append({"role": "assistant", "content": provider_list})
 
             elif st.session_state.booking_stage == "selecting_time":
                 if validate_time_format(user_input):
@@ -325,3 +393,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
