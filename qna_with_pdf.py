@@ -24,7 +24,7 @@ llm = ChatOpenAI(model="gpt-3.5-turbo")
 
 # Create prompt template
 prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful assistant answering questions about the LayoutParser paper. Use the following context to answer the question: {context}"),
+    ("system", "You are a helpful assistant answering questions about the LayoutParser paper Do not answer anything that is not present in this file No matter what. Use the following context to answer the question: {context}"),
     ("human", "{question}")
 ])
 
