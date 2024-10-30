@@ -36,7 +36,7 @@ def book_appointment(
     booking_category: str = "Event",
     override_slots: bool = True
 ) -> str:
-    """Make a POST request to book an appointment."""
+    """Make a POST request to book an appointment. and when done ask user if they have received the appointment confirmation on email"""
     
     url = "https://platform-api-development.azo.dev/api/service-provider-scheduling/appointments"
     payload = {
@@ -55,7 +55,7 @@ def book_appointment(
         }
     }
     headers = {
-        'authorization': 'Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InFWMDZzQzkzVS1UNWRIdXhRSWY1TyJ9.eyJuaWNrbmFtZSI6Im1hbmlzaGJhc2FyZ2VrYXIrc3BwIiwibmFtZSI6Im1hbmlzaGJhc2FyZ2VrYXIrc3BwQGF6b2RoYS5jb20iLCJwaWN0dXJlIjoiaHR0cHM6Ly9zLmdyYXZhdGFyLmNvbS9hdmF0YXIvMjhlOWRiYzZjNjNjNzRlOWRlMDA3NjlhZjkxMWY2OTE_cz00ODAmcj1wZyZkPWh0dHBzJTNBJTJGJTJGY2RuLmF1dGgwLmNvbSUyRmF2YXRhcnMlMkZtYS5wbmciLCJ1cGRhdGVkX2F0IjoiMjAyNC0xMC0yOFQwNzo0NDowNC40MzVaIiwiZW1haWwiOiJtYW5pc2hiYXNhcmdla2FyK3NwcEBhem9kaGEuY29tIiwiZW1haWxfdmVyaWZpZWQiOmZhbHNlLCJpc3MiOiJodHRwczovL2Rldi1jYXJlMnUudXMuYXV0aDAuY29tLyIsImF1ZCI6ImdVNzhLaTNDRmVzaUZHYlR6ZUR6RHpCTDE5MDFobkhWIiwiaWF0IjoxNzMwMTAxNDQ2LCJleHAiOjE3MzAxMzc0NDYsInN1YiI6ImF1dGgwfDY1MzZhZjkyOWFlZDhjZjFiMjM0Njc0OSIsInNpZCI6InNCRWFJMVVOZXEzU0k4anFnblF5RVAySElMUHdMbzZXIiwibm9uY2UiOiJiRkYxV1ROb0xWUTNSM3BEZWtNMWRsWXdjM2xCWTJWVlptNTFkbWxGYUdWd1kzRndhekkwWW5CNlRnPT0ifQ.yrRx7AJbTecfMuRN2nbmk73uDFBZ8gFVc7j6plSgPgE63qBXvlrwUp1yQ64yl5yktBDOyZXmzP5lHzkAaq0bdnsY_p_A2Ft1gECvawJlpDuT2LUAxdcpibrwWo6PxoK59UhZsnjhNbWEB7HxDGqV0krHKjC2kM5IHGGd2f3e39BxXWfjd2tWuODTQ53nl203IRx2p_EWfwNgqfSCWCSrfT27g6Dj2oyK-AWrElMGY97ttBd-HpvS0SVW_ISxdi3pSArE9S0zOPSvmGW2T9CeV1aFF_3ZWMLxnzboF_ee0YW4Dv4pOY6-p5KpO8Qjry-PP4KNbQzGIULBad_2rNbVDg',
+        'authorization': 'Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InFWMDZzQzkzVS1UNWRIdXhRSWY1TyJ9.eyJuaWNrbmFtZSI6ImFybmF2K2NhcmUydSIsIm5hbWUiOiJhcm5hditjYXJlMnVAYXpvZGhhLmNvbSIsInBpY3R1cmUiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci9iNTRmYzQ3YTIyNjRmODk1NTExMzIzMmExMGYxNjE5NT9zPTQ4MCZyPXBnJmQ9aHR0cHMlM0ElMkYlMkZjZG4uYXV0aDAuY29tJTJGYXZhdGFycyUyRmFyLnBuZyIsInVwZGF0ZWRfYXQiOiIyMDI0LTEwLTMwVDE1OjQ5OjM4LjM3OFoiLCJlbWFpbCI6ImFybmF2K2NhcmUydUBhem9kaGEuY29tIiwiZW1haWxfdmVyaWZpZWQiOmZhbHNlLCJpc3MiOiJodHRwczovL2Rldi1jYXJlMnUudXMuYXV0aDAuY29tLyIsImF1ZCI6ImdVNzhLaTNDRmVzaUZHYlR6ZUR6RHpCTDE5MDFobkhWIiwiaWF0IjoxNzMwMzAzMzgwLCJleHAiOjE3MzAzMzkzODAsInN1YiI6ImF1dGgwfDY3MTM4MTAwNGU4YTg5MDdmYmYwYzBmMCIsInNpZCI6InczMnJLZ1UwLVNQT0lzblZoeVduNV9teXhLSlVxanAtIiwibm9uY2UiOiJRbHBJYzE5eFpGbG9iV1JOVDJ4d2R6TTRhR3R2TUVnMlVHVXRWbkpEVm1ZdWNUVnRlR294TlVwcWF3PT0ifQ.yhZo-tsk51SzRqk34Ub5C3LRN5voj9xZdRjboYCV9mepC3ye_TmTb867bPRQxMvm2LhgTm52yqhkeDLxC6OUxpx05XgMpm3jAe_IcZadREpywXwMxEFAKczfLecZH3zXR1EDUYBD4DWFEUjspl1Z77Tm9E3-2GVc_wuSepfKugAutO0IaT3Acl5urRxwxa0KodWamwSuVoAEtzVWE437Hj3iRXxC47c5A1IWDnl1d96v6xzaIEGvUgQqw6mvadoYoAQxY3nVxSqz_u5m7iS-ASKvj8yzaSWK0sz8vVAhRSu1p8sou-HxF_pGQ3YaBNvLwUHLy2y-CbPZofw94Q_EeQ',
         'organization_code': 'dev-care2u',
         'Content-Type': 'application/json'
     }
@@ -66,7 +66,7 @@ def book_appointment(
         print(f"Response text: {response.text}")
         
         if response.status_code == 200:
-            return "Appointment successfully booked!"
+            return "Appointment successfully booked! Please check your email for confirmation."
         else:
             return f"Failed to book appointment. Status code: {response.status_code}"
     except Exception as e:
